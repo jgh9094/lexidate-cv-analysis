@@ -12,8 +12,9 @@ import sklearn.model_selection
 from functools import partial
 from estimator_node_gradual import EstimatorNodeGradual
 
-# lexicase selection with ignoring the complexity column
-def lexicase_selection_no_complexity(scores, k, rng=None, n_parents=1,):
+# standard lexicase selection with ignoring the complexity column
+# used with unaggregated values
+def lexicase_selection(scores, k, rng=None, n_parents=1,):
     """
     Select the best individual according to Lexicase Selection, *k* times.
     The returned list contains the indices of the chosen *individuals*.
@@ -25,7 +26,7 @@ def lexicase_selection_no_complexity(scores, k, rng=None, n_parents=1,):
 
     for _ in range(k*n_parents):
         candidates = list(range(len(scores)))
-        cases = list(range(len(scores[0]) - 1)) # ignore the last column which is complexity
+        cases = list(range(len(scores[0]) - 1)) # ignore the last column: complexity
         rng.shuffle(cases)
 
         while len(cases) > 0 and len(candidates) > 1:
@@ -36,8 +37,36 @@ def lexicase_selection_no_complexity(scores, k, rng=None, n_parents=1,):
 
     return np.reshape(chosen, (k, n_parents))
 
+# median absolute deviation for epsillon lexicase selection
+# used for aggregated values
+def mad_lexicase_selection(scores, k, rng=None, n_parents=1,):
+    """
+    Select the best individual according to Auto Epsilon Lexicase Selection, *k* times.
+    The returned list contains the indices of the chosen *individuals*.
+    :param scores: The score matrix, where rows the individulas and the columns correspond to scores on different objectives.
+    :returns: A list of indices of selected individuals.
+    """
+    rng = np.random.default_rng(rng)
+    chosen =[]
+    for _ in range(k*n_parents):
+        candidates = list(range(len(scores)))
+        cases = list(range(len(scores[0]) - 1)) # ignore the last column which is complexity
+        rng.shuffle(cases)
+
+        while len(cases) > 0 and len(candidates) > 1:
+            errors_for_this_case = scores[candidates,cases[0]]
+            median_val = np.median(errors_for_this_case)
+            median_absolute_deviation = np.median([abs(x - median_val) for x in errors_for_this_case])
+            best_val_for_case = min(errors_for_this_case) # smallest error for regression case
+            min_val_to_survive = best_val_for_case + median_absolute_deviation # equation (5) from epsillon lexicase selection paper
+            candidates = [x for x in candidates if scores[x, cases[0]] <= min_val_to_survive]
+            cases.pop(0)
+        chosen.append(rng.choice(candidates))
+
+    return np.reshape(chosen, (k, n_parents))
+
 # generate traditional cross validation scores for tournament selection
-def compressed_selection_objectives(est,X,y,cv):
+def compressed_objectives(est,X,y,cv,cv_k):
     # hold all the scores
     scores = []
     complexity = []
@@ -65,12 +94,12 @@ def compressed_selection_objectives(est,X,y,cv):
         del y_test
 
     # make sure we have the right number of scores
-    assert len(scores) == 10
-    assert len(complexity) == 10
+    assert len(scores) == cv_k
+    assert len(complexity) == cv_k
     return np.mean(scores, dtype=np.float64), np.mean(complexity, dtype=np.float64)
 
 # generate individual fold cross validation scores for lexicase selection
-def aggregated_selection_objectives(est,X,y,cv):
+def aggregated_objectives(est,X,y,cv,cv_k):
     # hold all the scores
     scores = []
     complexity = []
@@ -98,12 +127,12 @@ def aggregated_selection_objectives(est,X,y,cv):
         del y_test
 
     # make sure we have the right number of scores
-    assert len(scores) == 10
-    assert len(complexity) == 10
+    assert len(scores) == cv_k
+    assert len(complexity) == cv_k
     return scores + [np.mean(complexity, dtype=np.float64)]
 
 # generate individual fold cross validation scores for lexicase selection
-def unaggregated_selection_objectives(est,X,y,cv):
+def unaggregated_objectives(est,X,y,cv,cv_k):
     # hold all the scores
     scores = []
     complexity = []
@@ -132,63 +161,61 @@ def unaggregated_selection_objectives(est,X,y,cv):
 
     # make sure we have the right number of scores
     assert len(scores) == X.shape[0]
-    assert len(complexity) == 10
+    assert len(complexity) == cv_k
     return scores + [np.mean(complexity, dtype=np.float64)]
 
 # pipeline search space: selector(required) -> transformer(optional) -> regressor/classifier(required)
 def get_pipeline_space(seed):
     return tpot2.search_spaces.pipelines.SequentialPipeline([
-        tpot2.config.get_search_space("selectors_classification", random_state=seed, base_node=EstimatorNodeGradual),
+        tpot2.config.get_search_space(["selectors_classification", "Passthrough"], random_state=seed, base_node=EstimatorNodeGradual),
         tpot2.config.get_search_space(["transformers","Passthrough"], random_state=seed, base_node=EstimatorNodeGradual),
         tpot2.config.get_search_space("classifiers", random_state=seed, base_node=EstimatorNodeGradual)])
 
 # get selection scheme
-def get_selection_scheme(cv_type):
-    if cv_type == 'compressed':
+def get_selection_scheme(validation):
+    if validation == 'compressed':
         return tpot2.selectors.tournament_selection
-    elif cv_type == 'aggregated':
-        return lexicase_selection_no_complexity
-    elif cv_type == 'unaggregated':
-        return lexicase_selection_no_complexity
+    elif validation == 'aggregated':
+        return mad_lexicase_selection
+    elif validation == 'unaggregated':
+        return lexicase_selection
     else:
-        raise ValueError(f"Unknown selection scheme: {cv_type}")
+        raise ValueError(f"Unknown selection scheme: {validation}")
 
 # get estimator parameters depending on the selection scheme
 def get_estimator_params(n_jobs,
-                         cv_type,
+                         validation,
                          X_train,
                          y_train,
-                         seed):
+                         seed,
+                         cv_k):
     # print data shapes
-    print('X_train:',X_train.shape,'|','y_train:',y_train.shape)
+    print('X_train:',X_train.shape,'|','y_train:',y_train.shape, flush=True)
 
     # generate cv split
-    cv = sklearn.model_selection.StratifiedKFold(n_splits=10, shuffle=True, random_state=seed)
+    cv = sklearn.model_selection.StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed)
 
     # get selection objective functions
-    if cv_type == 'compressed':
+    if validation == 'compressed':
         # create selection objective functions
-        objective_scorer = partial(compressed_selection_objectives,X=X_train,y=y_train,cv=cv)
-        objective_scorer.__name__ = 'compressed-complexity'
-        # cv_score + complexity
+        objective_scorer = partial(compressed_objectives,X=X_train,y=y_train,cv=cv,cv_k=cv_k)
+        objective_scorer.__name__ = 'compressed'
         objective_names = ['cv'] + ['complexity']
         objective_weights = [1.0] + [-1.0]
-    elif cv_type == 'aggregated':
+    elif validation == 'aggregated':
         # create selection objective functions
-        objective_scorer = partial(aggregated_selection_objectives,X=X_train,y=y_train,cv=cv)
-        objective_scorer.__name__ = 'aggregated-complexity'
-        # accuracy_per_fold + complexity
+        objective_scorer = partial(aggregated_objectives,X=X_train,y=y_train,cv=cv,cv_k=cv_k)
+        objective_scorer.__name__ = 'aggregated'
         objective_names = ['fold_'+str(i) for i in range(10)] + ['complexity']
         objective_weights = [1.0 for _ in range(10)] + [-1.0]
-    elif cv_type == 'unaggregated':
+    elif validation == 'unaggregated':
         # create selection objective functions
-        objective_scorer = partial(unaggregated_selection_objectives,X=X_train,y=y_train,cv=cv)
-        objective_scorer.__name__ = 'unaggregated-complexity'
-        # accuracy_per_sample + complexity
+        objective_scorer = partial(unaggregated_objectives,X=X_train,y=y_train,cv=cv,cv_k=cv_k)
+        objective_scorer.__name__ = 'unaggregated'
         objective_names = ['sample_'+str(i) for i in range(X_train.shape[0])] + ['complexity']
         objective_weights = [1.0 for _ in range(X_train.shape[0])] + [-1.0]
     else:
-        raise ValueError(f"Unknown selection scheme: {cv_type}")
+        raise ValueError(f"Unknown selection scheme: {validation}")
 
     return cv, {
         # evaluation criteria
@@ -200,11 +227,11 @@ def get_estimator_params(n_jobs,
         'objective_function_names': objective_names,
 
         # evolutionary algorithm params
-        'population_size' : 10,
-        'generations' : 2,
+        'population_size' : 50,
+        'generations' : 200,
         'n_jobs':n_jobs,
         'survival_selector' :None,
-        'parent_selector': get_selection_scheme(cv_type),
+        'parent_selector': get_selection_scheme(validation),
         'random_state': seed,
 
         # offspring variation params
@@ -217,8 +244,8 @@ def get_estimator_params(n_jobs,
         'memory_limit':0,
         'preprocessing':False,
         'classification' : True,
-        'verbose':1,
-        'max_eval_time_mins':10, # 10 min time limit
+        'verbose': 1,
+        'max_eval_time_mins': 5, # 5 min time limit
         'max_time_mins': float("inf"), # run until generations are done
 
         # pipeline search space
@@ -277,12 +304,12 @@ def load_task(task_id, classification, preprocess=True):
     return X_train, y_train, X_test, y_test
 
 # get the best pipeline from tpot2 depending on the selection scheme
-def get_best_pipeline_results(est, cv, cv_type, seed, X, y):
+def get_best_pipeline_results(est, cv, validation, seed, X, y, cv_k):
     # update this subset of data to get the best performer
     sub = est.evaluated_individuals
 
     # if unaggregated, must get the average of all scores for each fold
-    if cv_type == 'unaggregated':
+    if validation == 'unaggregated':
         # remove rows with missing values
         sub = sub.dropna(subset=['sample_0'])
 
@@ -294,14 +321,14 @@ def get_best_pipeline_results(est, cv, cv_type, seed, X, y):
             # average all scores for a fold and add it as a new column
             sub['fold_'+str(i)] = sub[fold_names].mean(axis=1)
             i += 1
-        assert i == 10
+        assert i == cv_k
 
     # if aggregated, must get the average of all scores for each fold into a single score
-    if cv_type == 'aggregated' or cv_type == 'unaggregated':
+    if validation == 'aggregated' or validation == 'unaggregated':
         # remove rows with missing values
         sub = sub.dropna(subset=['fold_0'])
         # average all scores for a fold and add it as a new column
-        sub['cv'] = sub[[f'fold_{i}' for i in range(10)]].mean(axis=1)
+        sub['cv'] = sub[[f'fold_{i}' for i in range(cv_k)]].mean(axis=1)
 
     # drop all NA values for 'cv' column
     sub = sub.dropna(subset=['cv'])
@@ -321,56 +348,57 @@ def get_best_pipeline_results(est, cv, cv_type, seed, X, y):
                 best_performer['Individual'].values[0].export_pipeline()
 
 # execute task with tpot2
-def execute_experiment(cv_type,task_id,n_jobs,savepath,seed):
+def execute_experiment(validation,task_id,n_jobs,savepath,seed,cv_k):
+
     # generate directory to save results
     save_folder = f"{savepath}/{seed}-{task_id}"
     if os.path.exists(save_folder):
-        print('FOLDER ALREADY EXISTS:', save_folder)
+        print('FOLDER ALREADY EXISTS:', save_folder, flush=True)
         return
 
     # run experiment
     try:
-        print("LOADING DATA")
+        print("LOADING DATA", flush=True)
         X_train, y_train, X_test, y_test = load_task(task_id, preprocess=True, classification=True)
 
         # get estimator parameters
-        cv, est_params = get_estimator_params(n_jobs=n_jobs,cv_type=cv_type,X_train=X_train,y_train=y_train,seed=seed)
+        cv, est_params = get_estimator_params(n_jobs=n_jobs,validation=validation,X_train=X_train,y_train=y_train,seed=seed, cv_k=cv_k)
         est = tpot2.TPOTEstimator(**est_params)
 
         start = time.time()
-        print("ESTIMATOR FITTING")
+        print("ESTIMATOR FITTING", flush=True)
         est.fit(X_train, y_train) # x_train, y_train are not used at all by the estimator
         duration = time.time() - start
-        print("ESTIMATOR FITTING COMPLETE:", duration / 60 / 60, 'hours')
+        print("ESTIMATOR FITTING COMPLETE:", duration / 60 / 60, 'hours', flush=True)
 
         # get best performer performance and cast to numpy float32
-        train_performance, complexity, pipeline = get_best_pipeline_results(est, cv, cv_type, seed, X_train, y_train)
+        train_performance, complexity, pipeline = get_best_pipeline_results(est, cv, validation, seed, X_train, y_train, cv_k)
 
         # get test scores and save results
         results = score(pipeline, X_test, y_test, X_train=X_train, y_train=y_train)
         results['training_performance'] = train_performance
         results['training_complexity'] = complexity
         results["task_id"] = task_id
-        results["cv_type"] = cv_type
+        results["validation"] = validation
         results["seed"] = seed
 
-        print('RESULTS:', results)
+        print('RESULTS:', results, flush=True)
 
-        print('CREATING FOLDER:', save_folder)
+        print('CREATING FOLDER:', save_folder, flush=True)
         os.makedirs(save_folder)
 
-        print('SAVING:SCORES.PKL')
+        print('SAVING:SCORES.PKL', flush=True)
         with open(f"{save_folder}/results.pkl", "wb") as f:
             pickle.dump(results, f)
         return
 
     except Exception as e:
         trace =  traceback.format_exc()
-        pipeline_failure_dict = {"task_id": task_id, "cv_type": cv_type, "seed": seed, "error": str(e), "trace": trace}
-        print("failed on ")
-        print(save_folder)
-        print(e)
-        print(trace)
+        pipeline_failure_dict = {"task_id": task_id, "validation": validation, "seed": seed, "error": str(e), "trace": trace}
+        print("failed on ", flush=True)
+        print(save_folder, flush=True)
+        print(e, flush=True)
+        print(trace, flush=True)
 
         with open(f"{save_folder}/failed.pkl", "wb") as f:
             pickle.dump(pipeline_failure_dict, f)

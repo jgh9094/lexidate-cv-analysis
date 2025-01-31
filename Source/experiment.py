@@ -1,3 +1,5 @@
+# to run: python experiment.py -validation compressed -k 0 -task_id 146818 -n_jobs 10 -savepath -seed 0
+
 import argparse
 import utils as utils
 
@@ -5,7 +7,9 @@ def main():
     # read in arguements
     parser = argparse.ArgumentParser()
     # split proportion we are using
-    parser.add_argument("-cv_type", required=True, nargs='?')
+    parser.add_argument("-validation", required=True, nargs='?')
+    # k value for k-fold cross validation
+    parser.add_argument("-k", required=False, nargs='?')
     # what openml task are we using
     parser.add_argument("-task_id", required=True, nargs='?')
     # number of threads to use during estimator evalutation
@@ -16,8 +20,10 @@ def main():
     parser.add_argument("-seed", required=True, nargs='?')
 
     args = parser.parse_args()
-    cv_type = str(args.cv_type)
-    print('Split:', cv_type)
+    validation = str(args.validation)
+    print('Validation:', validation)
+    k = int(args.k)
+    print('K:', k)
     task_id = int(args.task_id)
     print('Task ID:', task_id)
     n_jobs = int(args.n_jobs)
@@ -41,7 +47,7 @@ def main():
     assert task_id in classification_tasks, 'Task ID not in list of tasks'
 
     # execute task
-    utils.execute_experiment(cv_type,task_id,n_jobs,savepath,seed)
+    utils.execute_experiment(validation,task_id,n_jobs,savepath,seed,k)
 
 if __name__ == '__main__':
     main()

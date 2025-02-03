@@ -97,7 +97,7 @@ else
 fi
 
 # let it rip
-python /home/hernandezj45/Repos/lexidate-variation-analysis/Source/experiment.py \
+python /home/hernandezj45/Repos/lexidate-cv-analysis/Source/experiment.py \
 -validation compressed \
 -k 10 \
 -task_id ${TASK_ID} \

@@ -2,9 +2,9 @@
 ########## Define Resources Needed with SBATCH Lines ##########
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --array=1-360%18
+#SBATCH --array=1-360%30
 #SBATCH --cpus-per-task=8
-#SBATCH -t 5:00:00
+#SBATCH -t 15:00:00
 #SBATCH --mem=150GB
 #SBATCH --job-name=k10-uag
 #SBATCH -p defq,moore

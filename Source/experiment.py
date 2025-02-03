@@ -2,6 +2,7 @@
 
 import argparse
 import utils as utils
+import os
 
 def main():
     # read in arguements
@@ -42,9 +43,15 @@ def main():
     # classification tasks:
     # rows < 5000
     # columns < 500
-    classification_tasks = [146818,359958,359963,190411,168350]
+    classification_tasks = [146818,359954,359955,190146,168757,359956,
+                            359958,359959,2073,359960,168784,359962]
 
     assert task_id in classification_tasks, 'Task ID not in list of tasks'
+
+    # check if savepath exists and exit if it does
+    if os.path.exists(savepath):
+        print('Savepath already exists')
+        exit()
 
     # execute task
     utils.execute_experiment(validation,task_id,n_jobs,savepath,seed,k)

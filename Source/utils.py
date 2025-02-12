@@ -206,8 +206,8 @@ def get_estimator_params(n_jobs,
         # create selection objective functions
         objective_scorer = partial(aggregated_objectives,X=X_train,y=y_train,cv=cv,cv_k=cv_k)
         objective_scorer.__name__ = 'aggregated'
-        objective_names = ['fold_'+str(i) for i in range(10)] + ['complexity']
-        objective_weights = [1.0 for _ in range(10)] + [-1.0]
+        objective_names = ['fold_'+str(i) for i in range(cv_k)] + ['complexity']
+        objective_weights = [1.0 for _ in range(cv_k)] + [-1.0]
     elif validation == 'unaggregated':
         # create selection objective functions
         objective_scorer = partial(unaggregated_objectives,X=X_train,y=y_train,cv=cv,cv_k=cv_k)

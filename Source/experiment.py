@@ -1,4 +1,4 @@
-# to run: python experiment.py -validation compressed -k 0 -task_id 146818 -n_jobs 10 -savepath -seed 0
+# to run: clear; python experiment.py -validation compressed -k 0 -task_id 146818 -n_jobs 10 -savepath -seed 0
 
 import argparse
 import utils as utils

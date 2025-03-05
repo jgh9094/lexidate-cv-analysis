@@ -12,6 +12,8 @@ import sklearn.model_selection
 from functools import partial
 from estimator_node_gradual import EstimatorNodeGradual
 
+REPLICATES = 30
+
 # standard lexicase selection with ignoring the complexity column
 # used with unaggregated values
 def lexicase_selection(scores, k, rng=None, n_parents=1,):
@@ -57,8 +59,8 @@ def mad_lexicase_selection(scores, k, rng=None, n_parents=1,):
             errors_for_this_case = scores[candidates,cases[0]]
             median_val = np.median(errors_for_this_case)
             median_absolute_deviation = np.median([abs(x - median_val) for x in errors_for_this_case])
-            best_val_for_case = min(errors_for_this_case) # smallest error for regression case
-            min_val_to_survive = best_val_for_case + median_absolute_deviation # equation (5) from epsillon lexicase selection paper
+            best_val_for_case = max(errors_for_this_case) # smallest error for regression case
+            min_val_to_survive = best_val_for_case - median_absolute_deviation # equation (5) from epsillon lexicase selection paper
             candidates = [x for x in candidates if scores[x, cases[0]] <= min_val_to_survive]
             cases.pop(0)
         chosen.append(rng.choice(candidates))
@@ -182,6 +184,17 @@ def get_selection_scheme(validation):
     else:
         raise ValueError(f"Unknown selection scheme: {validation}")
 
+# get time limit for the experiment
+def get_time_limit(cv_k):
+    if cv_k == 10:
+        return 5
+    elif cv_k == 5:
+        return 2.5
+    elif cv_k == 2:
+        return 1
+    else:
+        raise ValueError(f"Unknown cv_k: {cv_k}")
+
 # get estimator parameters depending on the selection scheme
 def get_estimator_params(n_jobs,
                          validation,
@@ -193,7 +206,7 @@ def get_estimator_params(n_jobs,
     print('X_train:',X_train.shape,'|','y_train:',y_train.shape, flush=True)
 
     # generate cv split
-    cv = sklearn.model_selection.StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed)
+    cv = sklearn.model_selection.StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed%REPLICATES)
 
     # get selection objective functions
     if validation == 'compressed':
@@ -227,17 +240,17 @@ def get_estimator_params(n_jobs,
         'objective_function_names': objective_names,
 
         # evolutionary algorithm params
-        'population_size' : 50,
-        'generations' : 200,
+        'population_size' : 100,
+        'generations' : 100,
         'n_jobs':n_jobs,
         'survival_selector' :None,
         'parent_selector': get_selection_scheme(validation),
         'random_state': seed,
 
         # offspring variation params
-        'mutate_probability': 0.7,
+        'mutate_probability': 0.5,
         'crossover_probability': 0.0,
-        'crossover_then_mutate_probability': 0.3,
+        'crossover_then_mutate_probability': 0.5,
         'mutate_then_crossover_probability': 0.0,
 
         # estimator params
@@ -245,7 +258,7 @@ def get_estimator_params(n_jobs,
         'preprocessing':False,
         'classification' : True,
         'verbose': 1,
-        'max_eval_time_mins': 5, # 5 min time limit
+        'max_eval_time_mins': get_time_limit(cv_k),
         'max_time_mins': float("inf"), # run until generations are done
 
         # pipeline search space

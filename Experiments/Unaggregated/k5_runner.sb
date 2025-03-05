@@ -14,7 +14,6 @@
 # load conda environment
 source /home/hernandezj45/anaconda3/etc/profile.d/conda.sh
 conda activate tpot2-env-3.10
-pip install -e /home/hernandezj45/Repos/lexidate-cv-analysis/3-step-ea/
 
 # Define the output directory
 DATA_DIR=/home/hernandezj45/Repos/lexidate-cv-analysis/Results/K_5/Unaggregated

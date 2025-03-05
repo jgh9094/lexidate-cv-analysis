@@ -1,0 +1,262 @@
+# Helper functions
+
+Here we show the functions being used to generate the supplementary material.
+All of the following functions are compsed of R code and are used to generate the figures, tables, and statitics.
+
+## Setup
+
+```{r setup, echo=TRUE}
+library(ggplot2)
+library(cowplot)
+library(dplyr)
+library(PupillometryR)
+
+
+NAMES = c('compressed','aggregated','unaggregated')
+SHAPE <- c(20,20,20)
+cb_palette <- c('#D81B1B', '#FFDC07','#004D40')
+data_dir <- '../../'
+c_task_id_lists <- c(146818,359954,359955,190146,168757,359956,
+                        359958,359959,2073,359960,168784,359962)
+
+p_theme <- theme(
+  plot.title = element_text(face = "bold", size = 17, hjust=0.5),
+  panel.border = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.title=element_text(size=17),
+  legend.text=element_text(size=17),
+  axis.title = element_text(size=17),
+  axis.text = element_text(size=11),
+  axis.text.y = element_text(angle = 90, hjust = 0.5),
+  legend.position="bottom",
+  panel.background = element_rect(fill = "#f1f2f5",
+                                  colour = "white",
+                                  size = 0.5, linetype = "solid"))
+
+results <- read.csv("./k2_data.csv")
+results$validation <- factor(results$validation, levels = NAMES)
+seed_offset <- 0
+```
+
+## Test set plot
+```{r test-plot, echo=TRUE}
+test_plot <- function(data) { return(
+    ggplot(data,
+    aes(x = validation, y = testing_performance, color = validation,
+                fill = validation, shape = validation)) +
+    geom_flat_violin(position = position_nudge(x = 0.1, y = 0),
+                    scale = "width", alpha = 0.2, width = 1.5) +
+    geom_boxplot(color = "black", width = .08, outlier.shape = NA,
+                alpha = 0.0, linewidth = 0.8,
+                position = position_nudge(x = .15, y = 0)) +
+    geom_point(position = position_jitter(width = 0.03,
+                height = 0.0), size = 1.5, alpha = 1.0) +
+    scale_y_continuous(
+    name = "Accuracy %",
+    labels = scales::percent,
+
+    ) +
+    scale_x_discrete(
+    name = "Validation"
+    ) +
+    scale_shape_manual(values = SHAPE,) +
+    scale_colour_manual(values = cb_palette,) +
+    scale_fill_manual(values = cb_palette,) +
+    ggtitle('Accuracy on test set') +
+    p_theme +
+    guides(
+    shape=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation"),
+    color=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation"),
+    fill=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation")) +
+    theme(axis.ticks.x = element_blank(),
+            axis.text.x = element_blank(),
+            axis.title.x = element_blank(),
+            axis.text.y = element_text(angle = 90, hjust = 0.5))
+)}
+```
+
+## Test set results summary
+```{r test-results-summary, echo=TRUE}
+test_results_summary <- function(data) {
+    return(
+        data %>%
+        group_by(validation) %>%
+        dplyr::summarise(
+            count = n(),
+            na_cnt = sum(is.na(testing_performance)),
+            min = min(testing_performance, na.rm = TRUE),
+            median = median(testing_performance, na.rm = TRUE),
+            mean = mean(testing_performance, na.rm = TRUE),
+            max = max(testing_performance, na.rm = TRUE),
+            IQR = IQR(testing_performance, na.rm = TRUE))
+    )
+}
+```
+
+## Permutaiton test results
+```{r test-results-stats, echo=TRUE, warning=FALSE}
+# permutation test with t-test statistic
+# assuming we are using an alpha of 0.05
+perm_test_maxt <- function(x, y, z, alternative = "two.sided", n_perm = 1000, seed = NULL,
+                           x_name = NULL, y_name = NULL, z_name = NULL) {
+  # Optionally set a seed for reproducibility
+  if (!is.null(seed)) set.seed(seed)
+
+  # Combine the data and create a grouping factor.
+  # Assuming each condition has the same sample size.
+  n <- length(x)
+  data_all <- c(x, y, z)
+  groups <- factor(rep(c("X", "Y", "Z"), each = n))
+
+  # Compute observed Welch t-tests for all pairwise comparisons.
+  test_XY <- t.test(x, y, alternative = alternative, var.equal = FALSE)
+  test_XZ <- t.test(x, z, alternative = alternative, var.equal = FALSE)
+  test_YZ <- t.test(y, z, alternative = alternative, var.equal = FALSE)
+
+  t_obs_XY <- as.numeric(test_XY$statistic)
+  t_obs_XZ <- as.numeric(test_XZ$statistic)
+  t_obs_YZ <- as.numeric(test_YZ$statistic)
+
+  # Store the permutation distribution of the max (or min) t-statistics.
+  max_stats_perm <- numeric(n_perm)
+
+  for (i in 1:n_perm) {
+    # Permute the group labels while preserving group sizes.
+    permuted_labels <- sample(groups)
+
+    # Create permuted groups based on the shuffled labels.
+    x_perm <- data_all[permuted_labels == "X"]
+    y_perm <- data_all[permuted_labels == "Y"]
+    z_perm <- data_all[permuted_labels == "Z"]
+
+    # Compute Welch t-tests on the permuted data.
+    t_perm_XY <- tryCatch(t.test(x_perm, y_perm, alternative = alternative, var.equal = FALSE)$statistic, error = function(e) NA)
+    t_perm_XZ <- tryCatch(t.test(x_perm, z_perm, alternative = alternative, var.equal = FALSE)$statistic, error = function(e) NA)
+    t_perm_YZ <- tryCatch(t.test(y_perm, z_perm, alternative = alternative, var.equal = FALSE)$statistic, error = function(e) NA)
+
+    # Adjust according to the type of test.
+    if (alternative == "two.sided") {
+      stats_perm <- abs(c(t_perm_XY, t_perm_XZ, t_perm_YZ))
+      max_stats_perm[i] <- max(stats_perm, na.rm = TRUE)
+    } else if (alternative == "greater") {
+      stats_perm <- c(t_perm_XY, t_perm_XZ, t_perm_YZ)
+      max_stats_perm[i] <- max(stats_perm, na.rm = TRUE)
+    } else if (alternative == "less") {
+      stats_perm <- c(t_perm_XY, t_perm_XZ, t_perm_YZ)
+      max_stats_perm[i] <- min(stats_perm, na.rm = TRUE)
+    }
+  }
+
+  # Compute adjusted p-values.
+  # For two-sided: p = proportion of permuted max absolute t-statistics >= observed absolute t
+  # For one-tailed "greater": p = proportion of permuted max t >= observed t
+  # For one-tailed "less": p = proportion of permuted min t <= observed t; otherwise p = 1
+  pval_XY <- pval_XZ <- pval_YZ <- NA
+
+  if (alternative == "two.sided") {
+    pval_XY <- mean(max_stats_perm >= abs(t_obs_XY))
+    pval_XZ <- mean(max_stats_perm >= abs(t_obs_XZ))
+    pval_YZ <- mean(max_stats_perm >= abs(t_obs_YZ))
+  } else if (alternative == "greater") {
+    pval_XY <- mean(max_stats_perm >= t_obs_XY)
+    pval_XZ <- mean(max_stats_perm >= t_obs_XZ)
+    pval_YZ <- mean(max_stats_perm >= t_obs_YZ)
+  } else if (alternative == "less") {
+    pval_XY <- mean(max_stats_perm <= t_obs_XY)
+    pval_XZ <- mean(max_stats_perm <= t_obs_XZ)
+    pval_YZ <- mean(max_stats_perm <= t_obs_YZ)
+  }
+
+  # check if pval are 0, if so set to 1/n_perm
+  if (pval_XY == 0) pval_XY <- 1 / n_perm
+  if (pval_XZ == 0) pval_XZ <- 1 / n_perm
+  if (pval_YZ == 0) pval_YZ <- 1 / n_perm
+
+  original <- c("X vs Y", "X vs Z", "Y vs Z")
+  # Replace "X" with x_name if provided
+  if (!is.null(x_name)) {
+    original <- gsub("X", x_name, original)
+  }
+
+  # Replace "Y" with y_name if provided
+  if (!is.null(y_name)) {
+    original <- gsub("Y", y_name, original)
+  }
+
+  # Replace "Z" with z_name if provided
+  if (!is.null(z_name)) {
+    original <- gsub("Z", z_name, original)
+  }
+
+  # Create a results data frame.
+  results <- data.frame(
+    Comparison = original,
+    Observed_t = c(t_obs_XY, t_obs_XZ, t_obs_YZ),
+    Adjusted_p = c(pval_XY, pval_XZ, pval_YZ)
+  )
+
+  # Return the data frame.
+  return(results)
+}
+```
+
+## Selection set plot
+```{r select-plot, echo=TRUE}
+selection_plot <- function(data) { return(
+    ggplot(data,
+    aes(x = validation, y = training_performance, color = validation,
+                fill = validation, shape = validation)) +
+    geom_flat_violin(position = position_nudge(x = 0.1, y = 0),
+                    scale = "width", alpha = 0.2, width = 1.5) +
+    geom_boxplot(color = "black", width = .08, outlier.shape = NA,
+                alpha = 0.0, linewidth = 0.8,
+                position = position_nudge(x = .15, y = 0)) +
+    geom_point(position = position_jitter(width = 0.03,
+                height = 0.0), size = 1.5, alpha = 1.0) +
+    scale_y_continuous(
+    name = "Accuracy %",
+    labels = scales::percent,
+
+    ) +
+    scale_x_discrete(
+    name = "Selection set"
+    ) +
+    scale_shape_manual(values = SHAPE,) +
+    scale_colour_manual(values = cb_palette,) +
+    scale_fill_manual(values = cb_palette,) +
+    ggtitle('Accuracy on validation set') +
+    p_theme +
+    guides(
+    shape=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation"),
+    color=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation"),
+    fill=guide_legend(nrow = 1, title.position = "left",
+                        title = "Validation")) +
+    theme(axis.ticks.x = element_blank(),
+            axis.text.x = element_blank(),
+            axis.title.x = element_blank(),
+            axis.text.y = element_text(angle = 90, hjust = 0.5))
+)}
+```
+
+## Selection set results summary
+```{r validation-results-summary, echo=TRUE}
+selection_results_summary <- function(data) {
+    return(
+        data %>%
+        group_by(validation) %>%
+        dplyr::summarise(
+            count = n(),
+            na_cnt = sum(is.na(training_performance)),
+            min = min(training_performance, na.rm = TRUE),
+            median = median(training_performance, na.rm = TRUE),
+            mean = mean(training_performance, na.rm = TRUE),
+            max = max(training_performance, na.rm = TRUE),
+            IQR = IQR(training_performance, na.rm = TRUE))
+    )
+}
+```

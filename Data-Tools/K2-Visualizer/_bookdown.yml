@@ -1,0 +1,22 @@
+book_filename: "lexidate-cv-supplemental"
+output_dir: "~/Desktop/Repositories/lexidate-cv-analysis/Supplementary-Material/K-2/"
+language:
+  ui:
+    chapter_name: "Chapter "
+delete_merged_file: true
+rmd_files: ["index.Rmd",
+            "helper-functions.Rmd",
+            "task-146818.Rmd",
+            "task-359954.Rmd",
+            "task-359955.Rmd",
+            "task-190146.Rmd",
+            "task-168757.Rmd",
+            "task-359956.Rmd",
+            "task-359958.Rmd",
+            "task-359959.Rmd",
+            "task-2073.Rmd",
+            "task-359960.Rmd",
+            "task-168784.Rmd",
+            "task-359962.Rmd",
+            "tail.Rmd"
+           ]

@@ -1,0 +1,40 @@
+---
+title: "Supplementary Material for 'Lexidate Selection Analysis: Unaggregating Cross-Validation K2 Results'"
+author: "Jose Guadalupe Hernandez, Anil Kumar Saini, Jason H. Moore"
+date: "`r Sys.Date()`"
+output: bookdown::gitbook
+documentclass: book
+bibliography: ["packages.bib", "supplemental.bib"]
+biblio-style: apalike
+nocite: '@*'
+link-citations: yes
+github-repo: jgh9094/lexidate-holdout-analysis
+description: "Supplementary Material"
+geometry: margin=2cm
+---
+
+```{r index, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This is not intended as a stand-alone document, but as a companion to our manuscript.
+
+## About our supplemental material
+
+As you may have noticed (unless you're reading a pdf version of this), our supplemental material is hosted using [GitHub pages](https://pages.github.com/).
+We compiled our data analyses and supplemental documentation into this nifty web-accessible book using [bookdown](https://bookdown.org).
+
+The code used for this supplemental material can be found in [this GitHub repository](https://github.com/jgh9094/lexidate-cv-analysis).
+
+Our supplemental material includes the following:
+
+- Helper functions (Section \@ref(helper-functions))
+- Task 146818 (Section \@ref(task-146818))
+
+## Contributing authors
+
+- [Jose Guadalupe Hernandez](https://jgh9094.github.io/)
+- [Anil Kumar Saini](https://theaksaini.github.io/)
+- [Jason H. Moore](https://jasonhmoore.org/)

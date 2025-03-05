@@ -1,0 +1,50 @@
+# Task 146818
+
+We present the results of our analysis of `task 146818` with the different selection set splits used in our study.
+
+```{r task-146818-data, echo=TRUE}
+task_data <- filter(results, task_id == 146818)
+```
+
+
+## Testing set accuracy
+
+```{r task-146818-test-05-perf, echo=TRUE, out.width="100%"}
+test_plot(task_data)
+```
+
+Summary statistics for the testing performance of the different validation methods used:
+```{r task-146818-test-05-sum, echo=TRUE, out.width="100%"}
+test_results_summary(task_data)
+```
+
+The permutation test revealed that the results are:
+```{r task-146818-test-05-pv, echo=TRUE, out.width="100%"}
+perm_test_maxt(x=filter(task_data, validation == 'compressed')$testing_performance,
+                y=filter(task_data, validation == 'aggregated')$testing_performance,
+                z=filter(task_data, validation == 'unaggregated')$testing_performance,
+                alternative = "two.sided",
+                n_perm = 10000,
+                seed = seed_offset + 0, x_name = 'com', y_name = 'agg', z_name = 'una')
+```
+
+## Validation set accuracy
+
+```{r task-146818-select-05-perf, echo=TRUE, out.width="100%"}
+selection_plot(task_data)
+```
+
+Summary statistics for the testing performance of the different validation methods used:
+```{r task-146818-select-05-sum, echo=TRUE, out.width="100%"}
+selection_results_summary(task_data)
+```
+
+The permutation test revealed that the results are:
+```{r task-146818-select-05-pv, echo=TRUE, out.width="100%"}
+perm_test_maxt(x=filter(task_data, validation == 'compressed')$training_performance,
+                y=filter(task_data, validation == 'aggregated')$training_performance,
+                z=filter(task_data, validation == 'unaggregated')$training_performance,
+                alternative = "two.sided",
+                n_perm = 10000,
+                seed = seed_offset + 1, x_name = 'com', y_name = 'agg', z_name = 'una')
+```

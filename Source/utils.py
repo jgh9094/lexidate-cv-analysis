@@ -187,11 +187,11 @@ def get_selection_scheme(validation):
 # get time limit for the experiment
 def get_time_limit(cv_k):
     if cv_k == 10:
-        return 5
+        return 10
     elif cv_k == 5:
-        return 2.5
+        return 5
     elif cv_k == 2:
-        return 1
+        return 2
     else:
         raise ValueError(f"Unknown cv_k: {cv_k}")
 
